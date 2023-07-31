@@ -27,21 +27,13 @@ TH1D* data_in_hist_800mK(TString fileName, float channelNr, TString histTitle, T
     vector<unsigned int>* acc = new vector<unsigned int>;
     TBranch* b_acc;
     ch->SetBranchAddress("accumulator",&acc,&b_acc);
-    
     for (int i = 0; i<nentries; i++) {
-        
         ch->GetEntry(i);
-        
         // default threshold: cut events below 60NPE
-        
         if ((acc->at(4)-3.57024e5)/72.84 > 60.){
-            
             hist_800mK->Fill(((acc->at(4)-3.57024e5)/72.84)*scalingParam);   // apply pedestal subtraction, NPE calibration (1/72.84) and scaling factor (1*scalingParam)
-            
         }
-        
     }
-    
     
     hist_800mK->SetTitle(Header);
     hist_800mK->Scale(1/runtime);
@@ -56,7 +48,30 @@ TH1D* data_in_hist_800mK(TString fileName, float channelNr, TString histTitle, T
     
 }
 
-
+//-------It is possible to do it without looping over the events: it will reduce largely the processing time ;)
+TH1D* data_in_hist_800mK_fast(TString fileName, float channelNr, TString histTitle, TString Header, float runtime, double scalingParam, TString outFileName){
+    
+    TFile* filein = new TFile(fileName);
+    
+    TString baseName = "fadc0channel";
+    TString TreeName = baseName+channelNr;
+    
+    TTree *T = (TTree*) filein->Get(TreeName);
+    
+    T->Draw(Form("(accumulator[4]-3.57024e5)/72.84*%i>>hist_800mK(1000,-50,310)", scalingParam), "accumulator[4]-3.57024e5)/72.84 > 60.");
+    TH1D* hist_800mK = (TH1D*) fileName->Get("hist_800mK");
+    
+    hist_800mK->SetTitle(Header);
+    hist_800mK->Scale(1./runtime);
+    
+    hist_800mK->SetLineColor(kBlue);
+    hist_800mK->SetLineWidth(2);
+    
+    hist_800mK->GetYaxis()->SetTitle("rate [Hz]");
+    hist_800mK->GetXaxis()->SetTitle("NPE");
+    
+    return hist_800mK;
+}
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 // process the FADC root files (event-by-event) - 300K (return TH1D)
