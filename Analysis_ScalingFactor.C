@@ -51,15 +51,16 @@ TH1D* data_in_hist_800mK(TString fileName, float channelNr, TString histTitle, T
 //-------It is possible to do it without looping over the events: it will reduce largely the processing time ;)
 TH1D* data_in_hist_800mK_fast(TString fileName, float channelNr, TString histTitle, TString Header, float runtime, double scalingParam, TString outFileName){
     
-    TFile* filein = new TFile(fileName);
+    TFile* filein = new TFile(outFileName, "RECREATE");
     
     TString baseName = "fadc0channel";
-    TString TreeName = baseName+channelNr;
     
-    TTree *T = (TTree*) filein->Get(TreeName);
+    TString chainName = baseName+channelNr;
+    TChain *ch = new TChain(chainName);
+    ch->Add(fileName);
     
-    T->Draw(Form("(accumulator[4]-3.57024e5)/72.84*%i>>hist_800mK(1000,-50,310)", scalingParam), "accumulator[4]-3.57024e5)/72.84 > 60.");
-    TH1D* hist_800mK = (TH1D*) fileName->Get("hist_800mK");
+    ch->Draw(Form("(accumulator[4]-3.57024e5)/72.84*%f>>hist_800mK(1000,-50,310)", scalingParam), "(accumulator[4]-3.57024e5)/72.84 > 60.");
+    TH1D* hist_800mK = (TH1D*) filein->Get("hist_800mK");
     
     hist_800mK->SetTitle(Header);
     hist_800mK->Scale(1./runtime);
