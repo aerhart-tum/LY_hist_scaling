@@ -252,7 +252,146 @@ void plotSPECTRA(){
 }
 
 
+Double_t chi2_from_TH1Ds(TH1D* histo_1, TH1D* histo_2, Double_t PE_min, Double_t PE_max){
+    int index_PE_min = histo_1->FindBin(PE_min);
+    int index_PE_max = histo_1->FindBin(PE_max);
+    
+    Double_t chi2, Content_1, Content_2, Error_1, Error_2;
+    for (int i=index_PE_min; i<index_PE_max+1; i++){
+        Content_1 = histo_1->GetBinContent(i+1);
+        Error_1 = histo_1->GetBinError(i+1);
+        Content_2 = histo_2->GetBinContent(i+1);
+        Error_2 = histo_2->GetBinError(i+1);
+        if (Content_1>0 || Content_2>0){
+            chi2 += ((Content_1-Content_2)*(Content_1-Content_2))/(Error_1*Error_1+Error_2*Error_2);
+        }
+    }
+    return chi2;
+}
 
+int Non_zero_NBins(TH1D* histo_1, TH1D* histo_2, Double_t PE_min, Double_t PE_max){
+    int index_PE_min = histo_1->FindBin(PE_min);
+    int index_PE_max = histo_1->FindBin(PE_max);
+    
+    int Non_zero;
+    Double_t Content_1, Content_2, Error_1, Error_2;
+    for (int i=index_PE_min; i<index_PE_max+1; i++){
+        Content_1 = histo_1->GetBinContent(i+1);
+        Error_1 = histo_1->GetBinError(i+1);
+        Content_2 = histo_2->GetBinContent(i+1);
+        Error_2 = histo_2->GetBinError(i+1);
+        if (Content_1>0 || Content_2>0){
+            Non_zero+=1;
+        }
+    }
+    return Non_zero;
+}
 
+///// Fit function
+///
+ROOT::Fit::FitResult Fit_Data_Simu(TString File_800mK= "../Files_800mK/Trigger_SiPM_noCoinc_800mV_thr90_cryostat-prototypePS_800mK_*", TString File_300K="../Files_300K/Trigger_SiPM_noCoinc_800mV_thr90_cryostat-prototypePS_300K_*") {
 
+    Double_t PE_min=45.;
+    Double_t PE_max=300.;
+    
+    TH1D* h_300K = data_in_hist_300K_fast(File_300K, 1, "hist_300K", "hist_300K", 1976.6, 1., "file300k.root");
+    h_300K->Rebin(10);
+    TH1D* h_800mK = new TH1D();
+    
+    //cf. https://root.cern.ch/doc/master/fitCircle_8C.html
+    auto chi2Function_Fit = [&](const Double_t *par) {
+        //minimisation function computing the sum of squares of chi2
+        Double_t Scaling = par[0];
+        
+        //Scale 800mK
+        h_800mK = data_in_hist_800mK_fast(File_800mK, 1, "hist_800mK", "hist_800mK", 7475.1, Scaling, "file800mK.root");
+        h_800mK->Rebin(10);
+        /// ------------ Total Chi2
+        double chi2 = chi2_from_TH1Ds(h_300K, h_800mK, PE_min, PE_max);
+        return chi2;
+    };
+    
+    // wrap chi2 function in a function object for the fit
+    // 4 is the number of fit parameters (size of array par)
+    ROOT::Math::Functor fcn_Fit(chi2Function_Fit, 1);
+    ROOT::Fit::Fitter fitter_Fit;
+    
+    // Initial fit parameters
+    Double_t pStart_Fit[1] = {0.65};
 
+    fitter_Fit.SetFCN(fcn_Fit, pStart_Fit);
+    fitter_Fit.Config().ParSettings(0).SetLimits(0.5, 0.7);
+    fitter_Fit.Config().ParSettings(0).SetName("Sacling Factor");
+    
+    // do the fit
+    cout<<"Fit starts"<<endl;
+    bool ok_Fit = fitter_Fit.FitFCN();
+    cout<<"Fit End"<<endl;
+    
+    // test fit
+    if(!ok_Fit) {
+        Error("fit", "%s", "Fit failed");
+    }
+    
+    const ROOT::Fit::FitResult &result_Fit = fitter_Fit.Result();
+    //    result_Fit.Print(std::cout);
+    
+    Double_t Fitted_Scaling = result_Fit.Parameter(0);
+    Double_t Fitted_Scaling_Error = result_Fit.ParError(0);
+    
+    double Chi2_Fit = result_Fit.MinFcnValue();
+    int N_dof = Non_zero_NBins(h_300K, h_800mK, PE_min, PE_max) - 1;
+    
+    cout << "\n**********************************************************************"<<endl;
+    cout<<" Fit between "<<PE_min<<" and "<<PE_max<<" PE"<<endl;
+    cout << "Chi2/dof = " << Chi2_Fit << "/" << N_dof << " = " << Chi2_Fit/N_dof<<endl;
+    cout <<" Scaling Factor = " << Fitted_Scaling << " +- " << Fitted_Scaling_Error <<endl;
+    cout << "**********************************************************************"<<endl;
+    
+    h_300K->Draw();
+    h_800mK->SetLineColor(kRed);
+    h_800mK->Draw("SAME");
+    return result_Fit;
+}
+
+// Residual histogram
+TH1D* Residuals_histos(TH1D* histo_data, TH1D* Model, Double_t Min, Double_t Max, bool pc = true){
+    TH1D* hRes = (TH1D*) histo_data->Clone();
+    double Value_i, E_i, Diff_i, Error_i;
+    double chi2=0;
+    for (int i = 1; i<hRes->GetNbinsX(); i++){
+        Value_i = hRes->GetBinContent(i);
+        E_i = hRes->GetBinCenter(i);
+        if (Value_i>0&&E_i>Min&&E_i<Max) {
+            Diff_i = histo_data->GetBinContent(i)-Model->GetBinContent(i);
+            Error_i = sqrt(histo_data->GetBinError(i)*histo_data->GetBinError(i)+Model->GetBinError(i)*Model->GetBinError(i));
+            if (pc) {
+                hRes->SetBinContent(i, Diff_i/Value_i*100);
+                hRes->SetBinError(i, Error_i/Value_i*100);
+            }
+            else {
+                hRes->SetBinContent(i, Diff_i/Error_i);
+                hRes->SetBinError(i, 1);
+            }
+            chi2+=(Diff_i*Diff_i)/(Error_i*Error_i);
+        }
+        else {
+            hRes->SetBinContent(i, 0);
+            hRes->SetBinError(i, 0);}
+    }
+
+    cout<<"\nChi2/ndf = "<<chi2<<"/"<<(Max-Min)/Model->GetBinWidth(1)<<" = "<<chi2/((Max-Min)/Model->GetBinWidth(1))<<endl;
+    hRes->SetLineColor(Model->GetLineColor());
+    hRes->SetTitle("");
+    if (pc){
+        hRes->GetYaxis()->SetRangeUser(-100, 100);
+        hRes->GetYaxis()->SetTitle("Residuals [%]");
+    }
+    else {
+        hRes->GetYaxis()->SetRangeUser(-20, 20);
+        hRes->GetYaxis()->SetTitle("Residuals [#sigma]");
+    }
+    
+    
+    return hRes;
+}
