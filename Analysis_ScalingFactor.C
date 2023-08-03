@@ -27,21 +27,13 @@ TH1D* data_in_hist_800mK(TString fileName, float channelNr, TString histTitle, T
     vector<unsigned int>* acc = new vector<unsigned int>;
     TBranch* b_acc;
     ch->SetBranchAddress("accumulator",&acc,&b_acc);
-    
     for (int i = 0; i<nentries; i++) {
-        
         ch->GetEntry(i);
-        
         // default threshold: cut events below 60NPE
-        
         if ((acc->at(4)-3.57024e5)/72.84 > 60.){
-            
             hist_800mK->Fill(((acc->at(4)-3.57024e5)/72.84)*scalingParam);   // apply pedestal subtraction, NPE calibration (1/72.84) and scaling factor (1*scalingParam)
-            
         }
-        
     }
-    
     
     hist_800mK->SetTitle(Header);
     hist_800mK->Scale(1/runtime);
@@ -54,6 +46,33 @@ TH1D* data_in_hist_800mK(TString fileName, float channelNr, TString histTitle, T
     
     return hist_800mK;
     
+}
+
+
+//-------It is possible to do it without looping over the events: it will reduce largely the processing time ;)
+TH1D* data_in_hist_800mK_fast(TString fileName, float channelNr, TString histTitle, TString Header, float runtime, double scalingParam, TString outFileName){
+    
+    TFile* filein = new TFile(outFileName, "RECREATE");
+    
+    TString baseName = "fadc0channel";
+    
+    TString chainName = baseName+channelNr;
+    TChain *ch = new TChain(chainName);
+    ch->Add(fileName);
+    
+    ch->Draw(Form("(accumulator[4]-3.57024e5)/72.84*%f>>hist_800mK(1000,-50,310)", scalingParam), "(accumulator[4]-3.57024e5)/72.84 > 60.");
+    TH1D* hist_800mK = (TH1D*) filein->Get("hist_800mK");
+    
+    hist_800mK->SetTitle(Header);
+    hist_800mK->Scale(1./runtime);
+    
+    hist_800mK->SetLineColor(kBlue);
+    hist_800mK->SetLineWidth(2);
+    
+    hist_800mK->GetYaxis()->SetTitle("rate [Hz]");
+    hist_800mK->GetXaxis()->SetTitle("NPE");
+    
+    return hist_800mK;
 }
 
 
@@ -103,6 +122,33 @@ TH1D* data_in_hist_300K(TString fileName, float channelNr, TString histTitle, TS
     
     return hist_300K;
     
+}
+
+
+//-------It is possible to do it without looping over the events: it will reduce largely the processing time ;)
+TH1D* data_in_hist_300K_fast(TString fileName, float channelNr, TString histTitle, TString Header, float runtime, double scalingParam, TString outFileName){
+    
+    TFile* filein = new TFile(outFileName, "RECREATE");
+    
+    TString baseName = "fadc0channel";
+    
+    TString chainName = baseName+channelNr;
+    TChain *ch = new TChain(chainName);
+    ch->Add(fileName);
+    
+    ch->Draw(Form("(accumulator[4]-3.57019e5)/83.46*%f>>hist_300K(1000,-50,310)", scalingParam), "(accumulator[4]-3.57019e5)/83.46 > 60.");
+    TH1D* hist_300K = (TH1D*) filein->Get("hist_300K");
+    
+    hist_300K->SetTitle(Header);
+    hist_300K->Scale(1./runtime);
+    
+    hist_300K->SetLineColor(kBlue);
+    hist_300K->SetLineWidth(2);
+    
+    hist_300K->GetYaxis()->SetTitle("rate [Hz]");
+    hist_300K->GetXaxis()->SetTitle("NPE");
+    
+    return hist_300K;
 }
 
 
@@ -169,10 +215,10 @@ void plotSPECTRA(){
     TCanvas *c1 = new TCanvas("cHistos","cHistos", 50, 50, 800, 600);
     gPad->SetGridx(0); gPad->SetGridy(0); gPad->SetLogy();
     
-    TH1D* hist_300K = data_in_hist_300K("/Volumes/Data_Drive/Studium/Promotionsstudium/2022-05-05_Prototype_polystyrene_Cryostat/300K/Trigger_SiPM_noCoinc_800mV_thr90_cryostat-prototypePS_300K_*", 1, "hist", "hist", 22132., 1., "test_git");
+    TH1D* hist_300K = data_in_hist_300K_fast("/Volumes/Data_Drive/Studium/Promotionsstudium/2022-05-05_Prototype_polystyrene_Cryostat/300K/Trigger_SiPM_noCoinc_800mV_thr90_cryostat-prototypePS_300K_*", 1, "hist", "hist", 22132., 1., "test_git");
 
     
-    TH1D* hist_800mK = data_in_hist_800mK("/Volumes/Data_Drive/Studium/Promotionsstudium/2022-05-05_Prototype_polystyrene_Cryostat/800mK/Trigger_SiPM_noCoinc_800mV_thr90_cryostat-prototypePS_800mK_*", 1, "hist", "hist", 44621., 0.62, "test_git");
+    TH1D* hist_800mK = data_in_hist_800mK_fast("/Volumes/Data_Drive/Studium/Promotionsstudium/2022-05-05_Prototype_polystyrene_Cryostat/800mK/Trigger_SiPM_noCoinc_800mV_thr90_cryostat-prototypePS_800mK_*", 1, "hist", "hist", 44621., 0.61, "test_git");
     
     
     c1->cd(1);
